@@ -46,7 +46,7 @@ jobs:
           cp Report_day.html Report_swing.html Report_long.html _site/
 
       - name: Upload Pages artifact
-        uses: actions/upload-pages-artifact@v3
+        uses: actions/upload-pages-artifact@v5
         with:
           path: _site
 
