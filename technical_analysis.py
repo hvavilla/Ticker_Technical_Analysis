@@ -1281,7 +1281,7 @@ def write_html(results, path, prows=None, ptotals=None, pproblems=None,
       background:#fff;border:1px solid #d4d7db;border-radius:8px;padding:9px 11px;
       box-shadow:0 6px 20px rgba(0,0,0,.13);opacity:0;visibility:hidden;
       transition:opacity .09s;pointer-events:none;text-align:left;white-space:normal}
-    .tw:hover .tip{opacity:1;visibility:visible}
+    .tw:hover .tip,.tw.active .tip{opacity:1;visibility:visible}
     .tw .tiph{display:block;font-size:10.5px;text-transform:uppercase;letter-spacing:.6px;
       color:var(--muted);font-weight:600;margin-bottom:5px}
     .tw .tip div{display:flex;justify-content:space-between;gap:12px;padding:3px 0;
@@ -1434,7 +1434,20 @@ crosses {CFG['cross_lookback']} bars · divergence within {CFG['div_bars']} bars
 Descriptive technical analysis for learning purposes — not investment advice.
 These labels report what the indicators currently say and have not been tested against
 future outcomes. Data via yfinance.
-</footer></div></body></html>"""
+</footer></div>
+<script>
+document.addEventListener('click', function(e){{
+  var tw = e.target.closest('.tw');
+  document.querySelectorAll('.tw.active').forEach(function(el){{
+    if (el !== tw) el.classList.remove('active');
+  }});
+  if (tw) {{
+    e.stopPropagation();
+    tw.classList.toggle('active');
+  }}
+}});
+</script>
+</body></html>"""
 
     with open(path, "w", encoding="utf-8") as f:
         f.write(doc)
