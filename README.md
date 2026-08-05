@@ -1,5 +1,7 @@
 # Technical Analysis Report Generator
 
+[![Daily report](https://github.com/hvavilla/Ticker_Technical_Analysis/actions/workflows/daily-report.yml/badge.svg)](https://github.com/hvavilla/Ticker_Technical_Analysis/actions/workflows/daily-report.yml)
+
 A learning tool for reading the key technical indicators across several companies at
 once. It reads your tickers from `watchlist.xlsx`, pulls daily price history, computes a
 standard indicator suite, and rolls each company up into four plain-English parameters, a
