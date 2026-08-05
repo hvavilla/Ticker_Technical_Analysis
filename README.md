@@ -517,7 +517,124 @@ close. Weekdays only, after the close, is the sensible cadence.
 
 ---
 
-## 10. Troubleshooting
+## 10. Cloud automation (GitHub Actions + Pages)
+
+This repo also runs itself in the cloud, so it works even when your own computer is off.
+A GitHub Actions workflow at
+[`.github/workflows/daily-report.yml`](.github/workflows/daily-report.yml):
+
+1. Checks out the repo on a temporary GitHub-hosted machine
+2. Installs `requirements.txt`
+3. Runs `python technical_analysis.py`, producing `Report_day.html`, `Report_swing.html`,
+   `Report_long.html`
+4. Commits those 3 files back to `main`
+5. Publishes them to GitHub Pages
+
+**Schedule:** weekdays at 21:30 UTC (4:30pm ET, ~30 minutes after the US market close —
+matches the "weekdays after the close" guidance above). Cron time is fixed in UTC, so it
+drifts by an hour relative to market close across DST transitions each spring/fall.
+
+**Live reports** (always reflect the latest run):
+
+```
+https://hvavilla.github.io/Ticker_Technical_Analysis/Report_day.html
+https://hvavilla.github.io/Ticker_Technical_Analysis/Report_swing.html
+https://hvavilla.github.io/Ticker_Technical_Analysis/Report_long.html
+```
+
+### Triggering a run manually
+
+**Option A — GitHub website, no installs needed:**
+
+1. Go to the [Actions tab → "Daily technical analysis report"
+   workflow](https://github.com/hvavilla/Ticker_Technical_Analysis/actions/workflows/daily-report.yml).
+2. Click **"Run workflow"** (top right), then the green **"Run workflow"** button in the
+   dropdown that appears.
+3. Wait under a minute, then refresh one of the report URLs above.
+
+**Option B — from your own computer, using the GitHub CLI.** These steps assume no prior
+terminal experience.
+
+#### 1. Install Git
+
+Git downloads ("clones") the project files to your computer.
+
+*macOS:* Open **Terminal** (`Cmd + Space`, type `Terminal`, Enter), then run:
+```bash
+git --version
+```
+If it isn't installed, a popup offers to install "Command Line Developer Tools" — click
+**Install** and wait a few minutes.
+
+*Windows:* Download the installer from [git-scm.com/downloads](https://git-scm.com/downloads),
+run it, and click **Next** through the defaults. Then open **Command Prompt** (Windows key →
+type `cmd` → Enter) — that's your terminal for the rest of these steps.
+
+#### 2. Install GitHub CLI (`gh`)
+
+This is what lets you trigger the workflow from a terminal.
+
+*macOS:* If you don't have Homebrew yet, install it first:
+```bash
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+```
+Then install GitHub CLI:
+```bash
+brew install gh
+```
+
+*Windows:* Download and run the installer from [cli.github.com](https://cli.github.com/),
+clicking **Next**/**Install** through the defaults, then close and reopen Command Prompt.
+
+*Verify (both platforms):*
+```bash
+gh --version
+```
+A version number should print, not an error.
+
+#### 3. Log in to GitHub
+
+```bash
+gh auth login
+```
+Answer the prompts (arrow keys + Enter):
+- Account → **GitHub.com**
+- Protocol → **HTTPS**
+- Authenticate Git with your GitHub credentials? → **Yes**
+- How would you like to authenticate? → **Login with a web browser**
+
+Copy the one-time code it shows, press Enter, and your browser opens to a GitHub page —
+paste the code, click **Continue**, then **Authorize**. The terminal should then show
+"✓ Logged in as ...".
+
+> The account you log in with needs write access to this repo, or the trigger command in
+> step 5 will fail with a permissions error.
+
+#### 4. Clone the repo
+
+```bash
+cd ~/Desktop
+git clone https://github.com/hvavilla/Ticker_Technical_Analysis.git
+cd Ticker_Technical_Analysis
+```
+(Windows: use `cd %USERPROFILE%\Desktop` instead of `cd ~/Desktop`.)
+
+#### 5. Trigger the workflow
+
+```bash
+gh workflow run daily-report.yml
+```
+
+Check it's running:
+```bash
+gh run list --workflow=daily-report.yml --limit 1
+```
+The status column moves from `in_progress` to `completed`/`success`, usually within a
+minute. Then refresh one of the report URLs above to see the new run.
+
+---
+
+## 11. Troubleshooting
 
 **`Missing dependency 'yfinance'` or `'openpyxl'`** — environment not active, or install
 skipped. Run `pip install -r requirements.txt`.
