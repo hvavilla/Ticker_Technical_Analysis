@@ -61,6 +61,7 @@ outcomes, and it is deliberately blind to what you paid for a position.
 
 import argparse
 import os
+import re
 import sys
 import html as _html
 from datetime import datetime
@@ -1252,12 +1253,18 @@ def write_html(results, path, prows=None, ptotals=None, pproblems=None,
     css = """
     :root{--ink:#1a1c1e;--muted:#6b7075;--line:#e6e8eb;--bg:#fbfbfc;}
     *{box-sizing:border-box}
+    html{scroll-behavior:smooth}
     body{margin:0;background:var(--bg);color:var(--ink);
       font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
       -webkit-font-smoothing:antialiased;line-height:1.45}
     .wrap{max-width:1120px;margin:0 auto;padding:40px 28px 80px}
     header h1{font-size:26px;margin:0 0 4px;letter-spacing:-.4px}
     header .sub{color:var(--muted);font-size:13px}
+    .catnav{position:sticky;top:0;z-index:20;display:flex;flex-wrap:wrap;gap:8px;
+      background:var(--bg);padding:14px 0;margin:18px 0 0;border-bottom:1px solid var(--line)}
+    .catnav a{font-size:12.5px;font-weight:600;color:var(--muted);text-decoration:none;
+      padding:5px 12px;border-radius:999px;border:1px solid var(--line);white-space:nowrap}
+    .catnav a:hover{color:var(--ink);border-color:var(--ink)}
     h2{font-size:13px;text-transform:uppercase;letter-spacing:1.2px;color:var(--muted);
       font-weight:600;margin:48px 0 14px;padding-bottom:8px;border-bottom:1px solid var(--line)}
     table{width:100%;border-collapse:collapse;font-size:14px}
@@ -1265,7 +1272,7 @@ def write_html(results, path, prows=None, ptotals=None, pproblems=None,
     th{font-size:11px;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);font-weight:600}
     tbody tr:hover{background:#f4f6f8}
     h3.cathead2{font-size:15px;font-weight:700;color:var(--ink);margin:32px 0 12px;
-      padding-bottom:6px;border-bottom:2px solid var(--ink)}
+      padding-bottom:6px;border-bottom:2px solid var(--ink);scroll-margin-top:70px}
     h3.cathead2:first-child{margin-top:0}
     .co{font-weight:600}
     .tk{color:var(--muted);font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px}
@@ -1333,6 +1340,18 @@ def write_html(results, path, prows=None, ptotals=None, pproblems=None,
             buckets.setdefault(r.get("category", "Other"), []).append(r)
         return list(buckets.items())
 
+    def cat_slug(category, n):
+        s = re.sub(r"[^a-z0-9]+", "-", category.lower()).strip("-")
+        return f"sum-{s or n}"
+
+    groups = grouped(results)
+    catnav_html = ""
+    if any(category is not None for category, _ in groups):
+        links = "".join(
+            f'<a href="#{cat_slug(category, n)}">{_html.escape(category)}</a>'
+            for n, (category, _) in enumerate(groups) if category is not None)
+        catnav_html = f'<nav class="catnav">{links}</nav>'
+
     th = "".join(f"<th>{_html.escape(p)}</th>" for p in PARAMS)
     thead_row = (f'<tr><th>Company</th><th>Ticker</th>{th}'
                  f'<th>{_html.escape(REVERSAL_NAME)}</th><th>{_html.escape(VERDICT_NAME)}</th></tr>')
@@ -1354,9 +1373,10 @@ def write_html(results, path, prows=None, ptotals=None, pproblems=None,
                  f'<td>{_pill_tip(vlabel, vcat, vtrace, VERDICT_NAME)}</td></tr>')
 
     summary_html = ""
-    for category, group in grouped(results):
+    for n, (category, group) in enumerate(groups):
         if category is not None:
-            summary_html += f'<h3 class="cathead2">{_html.escape(category)}</h3>'
+            summary_html += (f'<h3 class="cathead2" id="{cat_slug(category, n)}">'
+                             f'{_html.escape(category)}</h3>')
         rows = "".join(summary_row(res) for res in group)
         summary_html += f'<table><thead>{thead_row}</thead><tbody>{rows}</tbody></table>'
 
@@ -1382,7 +1402,7 @@ def write_html(results, path, prows=None, ptotals=None, pproblems=None,
                  f'<div class="grid">{blocks}</div></div>')
 
     cards = ""
-    for category, group in grouped(results):
+    for category, group in groups:
         ok_cards = "".join(company_card(res) for res in group if res.get("ok"))
         if not ok_cards:
             continue
@@ -1451,6 +1471,7 @@ def write_html(results, path, prows=None, ptotals=None, pproblems=None,
 <title>Technical Analysis Report</title><style>{css}</style></head><body><div class="wrap">
 <header><h1>Technical Analysis Report</h1>
 <div class="sub">{ok_n} companies · {_html.escape(mode_label)} · {_html.escape(interval)} bars · generated {datetime.now():%Y-%m-%d %H:%M}</div></header>
+{catnav_html}
 <h2>Cross-Company Summary</h2>
 {summary_html}
 {pblock}
