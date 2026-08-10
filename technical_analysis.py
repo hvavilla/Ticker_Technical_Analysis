@@ -88,7 +88,7 @@ DEFAULTS = {
     # Fallback tickers, used only when the watchlist workbook is absent or empty.
     "companies": ["NVDA", "AMD", "AVGO", "MRVL", "ASML",
                   "MU", "GOOGL", "INTC", "TSM", "QCOM"],
-    "watchlist": "watchlist.xlsx",   # ticker, note
+    "watchlist": "watchlist.xlsx",   # ticker, note, category (category optional)
     "portfolio": "portfolio.xlsx",   # ticker, shares, price, date, note
     "output": "Report",              # -> Report_day.html, Report_swing.html, ...
 }
@@ -927,17 +927,21 @@ def _cell_str(v):
 
 
 def load_watchlist(path):
-    """Read tickers from watchlist.xlsx. Returns (tickers, problems)."""
+    """Read tickers from watchlist.xlsx. An optional 'category' column groups
+    companies in the report; tickers without one fall back to "Other".
+    Returns (tickers, categories, problems)."""
     df, problems = _read_sheet(path, "Watchlist")
     if df is None:
-        return [], problems
+        return [], {}, problems
     if "ticker" not in df.columns:
-        return [], [f"{path}: no 'ticker' column found "
-                    f"(saw: {', '.join(df.columns) or 'nothing'})"]
+        return [], {}, [f"{path}: no 'ticker' column found "
+                        f"(saw: {', '.join(df.columns) or 'nothing'})"]
+    has_category = "category" in df.columns
 
     tickers = []
-    for n, val in enumerate(df["ticker"], 2):   # row 2 = first data row
-        t = _cell_str(val).upper()
+    categories = {}
+    for n, row in enumerate(df.to_dict("records"), 2):   # row 2 = first data row
+        t = _cell_str(row.get("ticker")).upper()
         if not t:
             continue
         if " " in t:
@@ -945,7 +949,10 @@ def load_watchlist(path):
             continue
         if t not in tickers:
             tickers.append(t)
-    return tickers, problems
+            if has_category:
+                cat = _cell_str(row.get("category"))
+                categories[t] = cat if cat else "Other"
+    return tickers, categories, problems
 
 
 def load_portfolio(path):
@@ -1257,6 +1264,9 @@ def write_html(results, path, prows=None, ptotals=None, pproblems=None,
     th,td{text-align:left;padding:11px 12px;border-bottom:1px solid var(--line);vertical-align:middle}
     th{font-size:11px;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);font-weight:600}
     tbody tr:hover{background:#f4f6f8}
+    h3.cathead2{font-size:15px;font-weight:700;color:var(--ink);margin:32px 0 12px;
+      padding-bottom:6px;border-bottom:2px solid var(--ink)}
+    h3.cathead2:first-child{margin-top:0}
     .co{font-weight:600}
     .tk{color:var(--muted);font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px}
     .pill{display:inline-block;padding:3px 10px;border-radius:999px;font-size:12.5px;
@@ -1312,28 +1322,45 @@ def write_html(results, path, prows=None, ptotals=None, pproblems=None,
             for k, v in nums.items())
         return f'<div class="nums">{rows}</div>'
 
-    srows = ""
-    for res in results:
+    def grouped(results):
+        """Bucket results by category, preserving first-seen order. Returns
+        [(None, results)] unchanged when no result carries a category, so
+        the report stays flat unless the watchlist opted into grouping."""
+        if not any("category" in r for r in results):
+            return [(None, results)]
+        buckets = {}
+        for r in results:
+            buckets.setdefault(r.get("category", "Other"), []).append(r)
+        return list(buckets.items())
+
+    th = "".join(f"<th>{_html.escape(p)}</th>" for p in PARAMS)
+    thead_row = (f'<tr><th>Company</th><th>Ticker</th>{th}'
+                 f'<th>{_html.escape(REVERSAL_NAME)}</th><th>{_html.escape(VERDICT_NAME)}</th></tr>')
+
+    def summary_row(res):
         if not res.get("ok"):
-            srows += (f'<tr><td class="co">{_html.escape(res.get("name") or res["input"])}</td>'
-                      f'<td class="tk">{_html.escape(res.get("ticker","-"))}</td>'
-                      f'<td class="err" colspan="6">{_html.escape(res.get("error","error"))}</td></tr>')
-            continue
+            return (f'<tr><td class="co">{_html.escape(res.get("name") or res["input"])}</td>'
+                     f'<td class="tk">{_html.escape(res.get("ticker","-"))}</td>'
+                     f'<td class="err" colspan="6">{_html.escape(res.get("error","error"))}</td></tr>')
         cells = ""
         for k in PARAMS:
             label, cat, _, trace = res["signals"][k]
             cells += f'<td>{_pill_tip(label, cat, trace, k)}</td>'
         rlabel, rcat, _, rtrace = res["reversal"]
         vlabel, vcat, _, vtrace = res["verdict"]
-        srows += (f'<tr><td class="co">{_html.escape(res["name"])}</td>'
-                  f'<td class="tk">{_html.escape(res["ticker"])}</td>{cells}'
-                  f'<td>{_pill_tip(rlabel, rcat, rtrace, REVERSAL_NAME)}</td>'
-                  f'<td>{_pill_tip(vlabel, vcat, vtrace, VERDICT_NAME)}</td></tr>')
+        return (f'<tr><td class="co">{_html.escape(res["name"])}</td>'
+                 f'<td class="tk">{_html.escape(res["ticker"])}</td>{cells}'
+                 f'<td>{_pill_tip(rlabel, rcat, rtrace, REVERSAL_NAME)}</td>'
+                 f'<td>{_pill_tip(vlabel, vcat, vtrace, VERDICT_NAME)}</td></tr>')
 
-    cards = ""
-    for res in results:
-        if not res.get("ok"):
-            continue
+    summary_html = ""
+    for category, group in grouped(results):
+        if category is not None:
+            summary_html += f'<h3 class="cathead2">{_html.escape(category)}</h3>'
+        rows = "".join(summary_row(res) for res in group)
+        summary_html += f'<table><thead>{thead_row}</thead><tbody>{rows}</tbody></table>'
+
+    def company_card(res):
         blocks = ""
         for key in PARAMS:
             label, cat, nums, _ = res["signals"][key]
@@ -1347,12 +1374,21 @@ def write_html(results, path, prows=None, ptotals=None, pproblems=None,
                    f'{_pill(vlabel, vcat)}{nums_html(vnums)}</div>')
         degnote = (f'<div class="pwarn">{_html.escape("; ".join(res["degraded"]))}</div>'
                    if res.get("degraded") else "")
-        cards += (f'<div class="card"><h3>{_html.escape(res["name"])} '
-                  f'<span class="tk">{_html.escape(res["ticker"])}</span></h3>'
-                  f'<div class="meta">last close {_fmt_num(res["last_close"])} &nbsp;·&nbsp; '
-                  f'last complete bar {res["last_date"]:%Y-%m-%d} &nbsp;·&nbsp; '
-                  f'{res["bars"]} bars analysed</div>{degnote}'
-                  f'<div class="grid">{blocks}</div></div>')
+        return (f'<div class="card"><h3>{_html.escape(res["name"])} '
+                 f'<span class="tk">{_html.escape(res["ticker"])}</span></h3>'
+                 f'<div class="meta">last close {_fmt_num(res["last_close"])} &nbsp;·&nbsp; '
+                 f'last complete bar {res["last_date"]:%Y-%m-%d} &nbsp;·&nbsp; '
+                 f'{res["bars"]} bars analysed</div>{degnote}'
+                 f'<div class="grid">{blocks}</div></div>')
+
+    cards = ""
+    for category, group in grouped(results):
+        ok_cards = "".join(company_card(res) for res in group if res.get("ok"))
+        if not ok_cards:
+            continue
+        if category is not None:
+            cards += f'<h3 class="cathead2">{_html.escape(category)}</h3>'
+        cards += ok_cards
 
     # ---- portfolio block (only when holdings were supplied) ----
     pblock = ""
@@ -1409,7 +1445,6 @@ def write_html(results, path, prows=None, ptotals=None, pproblems=None,
                   f'what you paid &mdash; it reflects the indicators only, and has not been '
                   f'tested against outcomes.</div>')
 
-    th = "".join(f"<th>{_html.escape(p)}</th>" for p in PARAMS)
     ok_n = len([r for r in results if r.get("ok")])
     doc = f"""<!DOCTYPE html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
@@ -1417,9 +1452,7 @@ def write_html(results, path, prows=None, ptotals=None, pproblems=None,
 <header><h1>Technical Analysis Report</h1>
 <div class="sub">{ok_n} companies · {_html.escape(mode_label)} · {_html.escape(interval)} bars · generated {datetime.now():%Y-%m-%d %H:%M}</div></header>
 <h2>Cross-Company Summary</h2>
-<table><thead><tr><th>Company</th><th>Ticker</th>{th}
-<th>{_html.escape(REVERSAL_NAME)}</th><th>{_html.escape(VERDICT_NAME)}</th></tr></thead>
-<tbody>{srows}</tbody></table>
+{summary_html}
 {pblock}
 <h2>Company Detail</h2>
 {cards}
@@ -1456,9 +1489,11 @@ document.addEventListener('click', function(e){{
 # ============================================================================
 # 10. MAIN
 # ============================================================================
-def run_mode(mode, companies, lots, pproblems, base, interval_override=None):
+def run_mode(mode, companies, lots, pproblems, base, interval_override=None,
+             categories=None):
     """Analyse every company in one mode and write that mode's report.
     Each mode fetches its own bars, because the interval differs."""
+    categories = categories or {}
     m = MODES[mode]
     if interval_override:
         m = dict(m)
@@ -1493,6 +1528,8 @@ def run_mode(mode, companies, lots, pproblems, base, interval_override=None):
                 print(f"        degraded: {d}")
         else:
             print(f"SKIPPED ({res.get('error')})")
+        if categories:
+            res["category"] = categories.get(comp.strip().upper(), "Other")
         results.append(res)
 
     prows, ptotals = (build_portfolio(lots, results) if lots else (None, None))
@@ -1536,8 +1573,9 @@ def main():
     # ---- watchlist: named file, else the default name, else built-in list ----
     wl_path = args.watchlist or DEFAULTS["watchlist"]
     companies = []
+    categories = {}
     if os.path.exists(wl_path):
-        companies, wproblems = load_watchlist(wl_path)
+        companies, categories, wproblems = load_watchlist(wl_path)
         for msg in wproblems:
             print(f"    ! {msg}")
         if companies:
@@ -1550,6 +1588,7 @@ def main():
               f"(copy watchlist_example.xlsx to {wl_path} to change it)")
     if not companies:
         companies = list(DEFAULTS["companies"])
+        categories = {}
 
     # ---- holdings: optional ----
     pf_path = args.portfolio or DEFAULTS["portfolio"]
@@ -1565,6 +1604,8 @@ def main():
         for t in dict.fromkeys(lot["ticker"] for lot in lots):
             if t not in have:
                 companies.append(t)
+                if categories:
+                    categories[t] = "Other holdings"
     elif args.portfolio:
         print(f"Holdings: {pf_path} not found - no portfolio table")
 
@@ -1578,7 +1619,7 @@ def main():
     for mode in modes:
         try:
             path, ok, total = run_mode(mode, companies, lots, pproblems,
-                                       base, args.interval)
+                                       base, args.interval, categories)
             written.append(path)
         except Exception as e:
             # one mode failing must not lose the others

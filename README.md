@@ -241,14 +241,22 @@ python technical_analysis.py --output chips
 
 Sheet `Watchlist`, one ticker per row:
 
-| ticker | note |
-|---|---|
-| NVDA | GPUs — dominant AI accelerator |
-| AMD | Instinct accelerators |
-| ASML | EUV lithography |
+| ticker | note | category |
+|---|---|---|
+| NVDA | Merchant GPUs + CUDA software moat | Accelerators & compute silicon |
+| AMD | Instinct MI GPUs, the main merchant alternative to NVDA | Accelerators & compute silicon |
+| ASML | EUV lithography, effectively a monopoly | Fabs, tools & EDA |
 
 `ticker` is required; `note` is for your reference and ignored by the script. Headers are
 matched case-insensitively, blank rows are skipped, and duplicates are read once.
+
+`category` is optional. When present, both the Cross-Company Summary and Company Detail
+sections render as **one table/card group per category**, in the order categories first
+appear in the sheet, with companies grouped underneath in their sheet order. A row's
+`category` value must match another row's **exactly** (spelling and capitalization) to
+land in the same group — a typo silently creates its own one-row group instead of joining
+the intended one. Rows with no `category` value fall into a group named "Other". Leave the
+column out entirely (or delete it) to go back to one flat, ungrouped table.
 
 **If `watchlist.xlsx` is missing, the script falls back to a built-in list** of ten AI
 chip tickers (NVDA, AMD, AVGO, MRVL, ASML, MU, GOOGL, INTC, TSM, QCOM) and says so in the
@@ -455,9 +463,10 @@ skipped in that mode. That's the data genuinely not existing, not a fault to fix
 
 ## 7. Reading the output
 
-Start with the **Summary** table. Hover any coloured cell to see the decision trace —
-each condition with real values, what it contributed, and the final verdict on its own
-line. For example:
+Start with the **Summary** table (or tables — if the watchlist has a `category` column,
+this section is split into one table per category, see section 4). Hover any coloured
+cell to see the decision trace — each condition with real values, what it contributed,
+and the final verdict on its own line. For example:
 
 ```
 ADX 14.62 < 20                       | no conviction -> ranging
@@ -469,8 +478,10 @@ neutral, amber overbought, blue oversold. `Bullish but fading` still shows green
 territory sets the colour, the wording carries the nuance. A green cell isn't
 automatically good news; read the label.
 
-**Tooltips need a mouse.** Hover doesn't exist on phones or tablets, and tooltips don't
-print. The per-company cards below carry the same numbers, so nothing is unreachable.
+**On touch devices, tap a cell** to open its decision trace (tap again, or tap elsewhere,
+to close it) — hover doesn't exist on phones or tablets, so the report listens for taps
+too. Tooltips don't print either way. The per-company cards below carry the same numbers,
+so nothing is unreachable.
 
 ---
 
